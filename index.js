@@ -2,6 +2,8 @@ const express = require('express');
 const app = express();
 const PORT = 3000;
 
+app.use(express.json());
+
 const users = [
   { id: 1, name: 'Anna', email: 'anna@example.com' },
   { id: 2, name: 'Bohdan', email: 'bohdan@example.com' },
@@ -22,6 +24,16 @@ app.get('/users/:id', (req, res) => {
     return res.status(404).json({ error: 'User not found' });
   }
   res.json(user);
+});
+
+app.post('/users', (req, res) => {
+  const { name, email } = req.body;
+  if (!name || !email) {
+    return res.status(400).json({ error: 'name and email are required' });
+  }
+  const newUser = { id: users.length + 1, name, email };
+  users.push(newUser);
+  res.status(201).json(newUser);
 });
 
 app.listen(PORT, () => {

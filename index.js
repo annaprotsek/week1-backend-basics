@@ -36,6 +36,26 @@ app.post('/users', (req, res) => {
   res.status(201).json(newUser);
 });
 
+app.put('/users/:id', (req, res) => {
+  const user = users.find((u) => u.id === Number(req.params.id));
+  if (!user) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+  const { name, email } = req.body;
+  if (name) user.name = name;
+  if (email) user.email = email;
+  res.json(user);
+});
+
+app.delete('/users/:id', (req, res) => {
+  const index = users.findIndex((u) => u.id === Number(req.params.id));
+  if (index === -1) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+  users.splice(index, 1);
+  res.status(204).send();
+});
+
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });

@@ -31,7 +31,7 @@ app.post('/users', (req, res) => {
   if (!name || !email) {
     return res.status(400).json({ error: 'name and email are required' });
   }
-  const newUser = { id: users.length + 1, name, email };
+  const newUser = { id: Math.max(...users.map(u => u.id), 0) + 1, name, email };
   users.push(newUser);
   res.status(201).json(newUser);
 });
@@ -83,7 +83,14 @@ app.post('/todos', (req, res) => {
   if (!title) {
     return res.status(400).json({ error: 'title is required' });
   }
-  const newTodo = { id: todos.length + 1, title, completed: Boolean(completed) };
+  if (completed !== undefined && typeof completed !== 'boolean') {
+    return res.status(400).json({ error: 'completed must be a boolean' });
+  }
+  const newTodo = {
+    id: Math.max(...todos.map(t => t.id), 0) + 1,
+    title,
+    completed: completed === undefined ? false : completed,
+  };
   todos.push(newTodo);
   res.status(201).json(newTodo);
 });
@@ -94,6 +101,9 @@ app.put('/todos/:id', (req, res) => {
     return res.status(404).json({ error: 'Todo not found' });
   }
   const { title, completed } = req.body;
+  if (completed !== undefined && typeof completed !== 'boolean') {
+    return res.status(400).json({ error: 'completed must be a boolean' });
+  }
   if (title !== undefined) todo.title = title;
   if (completed !== undefined) todo.completed = completed;
   res.json(todo);
@@ -106,6 +116,90 @@ app.delete('/todos/:id', (req, res) => {
   }
   todos.splice(index, 1);
   res.status(204).send();
+});
+
+const products = []
+
+app.get('/products', (req, res) => {
+  const { maxPrice, search } = req.query;
+  let result = products;
+
+  if (maxPrice !== undefined) {
+    const max = Number(maxPrice);
+    if (Number.isNaN(max)) {
+      return res.status(400).json({ error: 'maxPrice must be a number' });
+    }
+    result = result.filter((p) => p.price <= max);
+  }
+
+  if (search !== undefined) {
+    result = result.filter((p) => p.name.toLowerCase().includes(search.toLowerCase()));
+  }
+
+  res.json(result);
+});
+
+app.get('/products/:id', (req, res) => {
+  const product = products.find((p) => p.id === Number(req.params.id));
+  if (!product) {
+    return res.status(404).json({ error: 'Product not found' });
+  }
+  res.json(product);
+});
+
+app.post('/products', (req, res) => {
+  const { name, price, description } = req.body;
+
+  if (!name) {
+    return res.status(400).json({ error: 'name is required' });
+  }
+  if (typeof price !== 'number' || price <= 0) {
+    return res.status(400).json({ error: 'price must be a number greater than 0' });
+  }
+
+  const newProduct = {
+    id: Math.max(...products.map((p) => p.id), 0) + 1,
+    name,
+    price,
+    description: description === undefined ? '' : description,
+  };
+  products.push(newProduct);
+  res.status(201).json(newProduct);
+});
+
+app.put('/products/:id', (req, res) => {
+  const product = products.find((p) => p.id === Number(req.params.id));
+  if (!product) {
+    return res.status(404).json({ error: 'Product not found' });
+  }
+
+  const { name, price, description } = req.body;
+
+  if (name !== undefined && !name) {
+    return res.status(400).json({ error: 'name cannot be empty' });
+  }
+  if (price !== undefined && (typeof price !== 'number' || price <= 0)) {
+    return res.status(400).json({ error: 'price must be a number greater than 0' });
+  }
+
+  if (name !== undefined) product.name = name;
+  if (price !== undefined) product.price = price;
+  if (description !== undefined) product.description = description;
+
+  res.json(product);
+});
+
+app.delete('/products/:id', (req, res) => {
+  const index = products.findIndex((p) => p.id === Number(req.params.id));
+  if (index === -1) {
+    return res.status(404).json({ error: 'Product not found' });
+  }
+  products.splice(index, 1);
+  res.status(204).send();
+});
+
+app.post('/debug/echo/:id', (req, res) => {
+  res.json({ params: req.params, query: req.query, body: req.body });
 });
 
 app.listen(PORT, () => {

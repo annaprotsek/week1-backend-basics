@@ -22,32 +22,32 @@
 
 module.exports = {
   // Найпростіший endpoint
-  'GET /hello': { status: null, bodyType: null },
+  'GET /hello': { status: 200, bodyType: "object" },
 
   // Список усіх користувачів
-  'GET /users': { status: null, bodyType: null },
+  'GET /users': { status: 200, bodyType: "array" },
 
   // Конкретний користувач, який існує
-  'GET /users/2': { status: null, bodyType: null },
+  'GET /users/2': { status: 200, bodyType: "object" },
 
   // Користувач, якого немає
-  'GET /users/999': { status: null, bodyType: null },
+  'GET /users/999': { status: 404, bodyType: "object" },
 
   // Увага: 'abc' — це не число. Подумай, що зробить твій код у цьому випадку.
-  'GET /users/abc': { status: null, bodyType: null },
+  'GET /users/abc': { status: 404, bodyType: "object" },
 
   // Створення користувача з коректним тілом { name, email }
-  'POST /users (name + email)': { status: null, bodyType: null },
+  'POST /users (name + email)': { status: 201, bodyType: "object" },
 
   // Створення з тілом { name } — без email
-  'POST /users (тільки name)': { status: null, bodyType: null },
+  'POST /users (тільки name)': { status: 400, bodyType: "object" },
 
   // Оновлення користувача, якого не існує
-  'PUT /users/999': { status: null, bodyType: null },
+  'PUT /users/999': { status: 404, bodyType: "object" },
 
   // Видалення користувача, який існує
-  'DELETE /users/2': { status: null, bodyType: null },
+  'DELETE /users/2': { status: 204, bodyType: "empty" },
 
   // Фільтр по query-параметру
-  'GET /todos?completed=true': { status: null, bodyType: null },
+  'GET /todos?completed=true': { status: 200, bodyType: "array" },
 };

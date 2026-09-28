@@ -7,6 +7,8 @@
  *   node exercises/run.js          — покроковий режим: веде по одному таску за раз
  *   node exercises/run.js 04       — те саме, але одразу з таска 04
  *   node exercises/run.js --all    — просто прогнати всі перевірки і показати підсумок
+ *   node exercises/run.js --all --target=python
+ *                                  — ті самі перевірки, але проти python/app.py (таск 16)
  *
  * Перед КОЖНОЮ перевіркою сервер піднімається заново, а після — зупиняється.
  * Тому таски не заважають один одному: те, що ти створила в 06, не зіпсує 04.
@@ -36,16 +38,21 @@ function loadTasks() {
  * Проганяє один таск: піднімає сервер, виконує перевірки, зупиняє сервер.
  *
  * @param {object} task
- * @param {{quiet?: boolean}} [options] quiet — нічого не друкувати (для початкового огляду)
+ * @param {{quiet?: boolean, target?: string}} [options] quiet — нічого не друкувати
+ *        (для початкового огляду); target — яку реалізацію піднімати ('node' | 'python')
  */
 async function runTask(task, options = {}) {
   const quiet = options.quiet === true;
   const checks = [];
+  let target = options.target || 'node';
   let server = null;
 
   const context = {
     port: null,
     api: (method, urlPath, body) => request(context.port, method, urlPath, body),
+    /** Запит із повним контролем: свої заголовки, сире тіло, запит без тіла. */
+    send: (method, urlPath, requestOptions) =>
+      request(context.port, method, urlPath, undefined, requestOptions),
     check(name, ok, hint) {
       checks.push(Boolean(ok));
       if (!quiet) report.checkLine(name, Boolean(ok), hint);
@@ -58,14 +65,21 @@ async function runTask(task, options = {}) {
     },
     async restart() {
       await server.stop();
-      server = await startServer();
+      server = await startServer({ target });
+      context.port = server.port;
+    },
+    /** Підняти іншу реалізацію того самого API (потрібно таску 16). */
+    async useTarget(nextTarget) {
+      if (server) await server.stop();
+      target = nextTarget;
+      server = await startServer({ target });
       context.port = server.port;
     },
   };
 
   try {
     if (task.needsServer !== false) {
-      server = await startServer();
+      server = await startServer({ target });
       context.port = server.port;
     }
 
@@ -121,13 +135,13 @@ function createPrompt() {
 }
 
 /** Покроковий режим: один таск за раз, з поясненнями і паузами. */
-async function guide(tasks, startId) {
-  report.welcome();
+async function guide(tasks, startId, target) {
+  report.welcome(tasks.length);
   report.scanning();
 
   const state = new Map();
   for (const task of tasks) {
-    state.set(task.id, await runTask(task, { quiet: true }));
+    state.set(task.id, await runTask(task, { quiet: true, target }));
   }
   report.progressTable([...state.values()]);
 
@@ -164,7 +178,7 @@ async function guide(tasks, startId) {
         }
         if (answer === 's') break;
 
-        const result = await runTask(task);
+        const result = await runTask(task, { target });
         state.set(task.id, result);
 
         if (result.status === 'passed') {
@@ -183,11 +197,11 @@ async function guide(tasks, startId) {
 }
 
 /** Неінтерактивний режим: прогнати все і показати підсумок. */
-async function runAll(tasks) {
+async function runAll(tasks, target) {
   const results = [];
   for (const task of tasks) {
     report.taskIntro(task, results.length + 1, tasks.length);
-    results.push(await runTask(task));
+    results.push(await runTask(task, { target }));
   }
   report.summary(results);
   return results;
@@ -204,6 +218,13 @@ async function main() {
   const wantAll = args.includes('--all') || args.includes('-a');
   const ids = args.filter((a) => /^\d+$/.test(a)).map((a) => a.padStart(2, '0'));
 
+  const targetArg = args.find((a) => a.startsWith('--target='));
+  const target = targetArg ? targetArg.slice('--target='.length) : 'node';
+  if (!['node', 'python'].includes(target)) {
+    console.error(`Невідомий --target=${target}. Є тільки node і python.`);
+    process.exit(1);
+  }
+
   const tasks = loadTasks();
   const unknown = ids.filter((id) => !tasks.some((t) => t.id === id));
   if (unknown.length > 0) {
@@ -215,12 +236,12 @@ async function main() {
   const interactive = process.stdin.isTTY && !wantAll;
 
   if (interactive) {
-    await guide(tasks, ids[0]);
+    await guide(tasks, ids[0], target);
     process.exit(0);
   }
 
   const selected = ids.length > 0 ? tasks.filter((t) => ids.includes(t.id)) : tasks;
-  const results = await runAll(selected);
+  const results = await runAll(selected, target);
   process.exit(results.every((r) => r.status === 'passed') ? 0 : 1);
 }
 

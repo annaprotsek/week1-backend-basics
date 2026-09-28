@@ -6,7 +6,7 @@
  * Що він уміє:
  *   1. знайти вільний порт і запустити твій сервер (node index.js) окремим процесом;
  *   2. дочекатися, поки той реально почне відповідати;
- *   3. зробити HTTP-запит і повернути status + розібраний JSON;
+ *   3. зробити HTTP-запит і повернути status + заголовки + розібраний JSON;
  *   4. зупинити сервер.
  *
  * Тут навмисно немає жодної зовнішньої бібліотеки — весь файл можна прочитати
@@ -14,10 +14,12 @@
  */
 
 const { spawn } = require('node:child_process');
+const fs = require('node:fs');
 const net = require('node:net');
 const path = require('node:path');
 
 const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
+const PYTHON_DIR = path.join(PROJECT_ROOT, 'python');
 const START_TIMEOUT_MS = 10000;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -39,20 +41,46 @@ function findFreePort() {
 }
 
 /**
- * Запускає index.js окремим процесом і чекає, поки сервер відповість.
+ * Чим саме запускати кожен таргет.
  *
- * Порт передається через змінну оточення PORT. Якщо index.js її ігнорує,
- * ми підстраховуємось і читаємо порт із рядка, який сервер друкує у консоль
+ * Таргет — це реалізація того самого API. 'node' — твій index.js, 'python' —
+ * той самий контракт, переписаний на FastAPI (таск 16). Перевірки однакові
+ * для обох: у цьому вся ідея — контракт не залежить від мови.
+ */
+function commandFor(target) {
+  if (target === 'python') {
+    // Якщо поруч є віртуальне оточення — беремо python з нього, інакше системний.
+    const venv = path.join(PYTHON_DIR, '.venv', 'bin', 'python3');
+    return {
+      file: fs.existsSync(venv) ? venv : process.env.PYTHON || 'python3',
+      args: ['app.py'],
+      cwd: PYTHON_DIR,
+      // Інакше Python буферизує вивід і ми не побачимо помилку, якщо він впаде.
+      extraEnv: { PYTHONUNBUFFERED: '1' },
+      entry: 'python/app.py',
+    };
+  }
+  return { file: process.execPath, args: ['index.js'], cwd: PROJECT_ROOT, extraEnv: {}, entry: 'index.js' };
+}
+
+/**
+ * Запускає сервер окремим процесом і чекає, поки він відповість.
+ *
+ * Порт передається через змінну оточення PORT. Якщо сервер її ігнорує,
+ * ми підстраховуємось і читаємо порт із рядка, який він друкує у консоль
  * ("Server running on http://localhost:3000").
  *
- * @returns {Promise<{port:number, stop:()=>Promise<void>}>}
+ * @param {{target?: 'node'|'python'}} [options]
+ * @returns {Promise<{port:number, target:string, stop:()=>Promise<void>}>}
  */
-async function startServer() {
+async function startServer(options = {}) {
+  const target = options.target || 'node';
+  const command = commandFor(target);
   const assignedPort = await findFreePort();
 
-  const child = spawn(process.execPath, ['index.js'], {
-    cwd: PROJECT_ROOT,
-    env: { ...process.env, PORT: String(assignedPort) },
+  const child = spawn(command.file, command.args, {
+    cwd: command.cwd,
+    env: { ...process.env, ...command.extraEnv, PORT: String(assignedPort) },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
 
@@ -67,6 +95,14 @@ async function startServer() {
 
   let exited = false;
   child.on('exit', () => {
+    exited = true;
+  });
+
+  // Сам процес не вдалося запустити (немає python3, немає файлу) — це не падіння
+  // сервера, а відсутня програма, і повідомлення має бути іншим.
+  let spawnError = null;
+  child.on('error', (error) => {
+    spawnError = error;
     exited = true;
   });
 
@@ -85,11 +121,22 @@ async function startServer() {
       const printedPort = (stdout.match(/localhost:(\d+)/) || [])[1];
       const wrongPort = printedPort && Number(printedPort) !== assignedPort;
       await stop();
+
+      if (spawnError) {
+        throw new Error(
+          `Не вдалося запустити ${command.file} ${command.args.join(' ')}: ${spawnError.message}\n` +
+            (target === 'python'
+              ? '  Схоже, немає python3 або немає файлу python/app.py.\n' +
+                '  Що робити — написано в python/README.md'
+              : '')
+        );
+      }
+
       throw new Error(
         stderr.includes('EADDRINUSE') || wrongPort
           ? `Порт ${printedPort || assignedPort} уже зайнятий іншою програмою.\n` +
             '  Перевірка запускає сервер на вільному порті через змінну оточення PORT,\n' +
-            '  тому в index.js має бути: const PORT = process.env.PORT || 3000;'
+            `  тому в ${command.entry} порт має братись саме з неї.`
           : `Сервер впав під час старту:\n${stderr.trim() || stdout.trim() || '(без повідомлення)'}`
       );
     }
@@ -100,7 +147,7 @@ async function startServer() {
 
     try {
       await fetch(`http://localhost:${port}/hello`);
-      return { port, stop };
+      return { port, target, stop };
     } catch {
       await sleep(30);
     }
@@ -108,7 +155,7 @@ async function startServer() {
 
   await stop();
   throw new Error(
-    `Сервер не почав відповідати за ${START_TIMEOUT_MS / 1000} с.\n` +
+    `Сервер (${command.entry}) не почав відповідати за ${START_TIMEOUT_MS / 1000} с.\n` +
       `  stdout: ${stdout.trim() || '(порожньо)'}\n` +
       `  stderr: ${stderr.trim() || '(порожньо)'}`
   );
@@ -117,19 +164,36 @@ async function startServer() {
 /**
  * Один HTTP-запит до сервера.
  *
+ * Звичайний виклик — request(port, 'POST', '/users', { name: 'A' }) — сам
+ * серіалізує тіло в JSON і ставить Content-Type: application/json.
+ *
+ * Коли таску треба керувати запитом точніше (свої заголовки, навмисно кривий
+ * JSON, запит взагалі без тіла), передається четвертим аргументом undefined,
+ * а всі деталі — п'ятим:
+ *
+ *   request(port, 'POST', '/users', undefined, {
+ *     headers: { 'Content-Type': 'text/plain' },
+ *     rawBody: 'це не JSON',
+ *   })
+ *
  * @param {number} port
- * @param {string} method  GET | POST | PUT | DELETE
+ * @param {string} method  GET | POST | PUT | PATCH | DELETE
  * @param {string} urlPath наприклад "/users/2?full=true"
- * @param {unknown} [body] якщо передано — піде як JSON
- * @returns {Promise<{status:number, body:unknown, text:string}>}
+ * @param {unknown} [body]  якщо передано — піде як JSON
+ * @param {{headers?: Record<string,string>, rawBody?: string}} [options]
+ * @returns {Promise<{status:number, body:unknown, text:string, headers:Record<string,string>}>}
  */
-async function request(port, method, urlPath, body) {
-  const hasBody = body !== undefined;
+async function request(port, method, urlPath, body, options = {}) {
+  const hasJsonBody = body !== undefined;
+  const hasRawBody = options.rawBody !== undefined;
 
   const response = await fetch(`http://localhost:${port}${urlPath}`, {
     method,
-    headers: hasBody ? { 'Content-Type': 'application/json' } : {},
-    body: hasBody ? JSON.stringify(body) : undefined,
+    headers: {
+      ...(hasJsonBody ? { 'Content-Type': 'application/json' } : {}),
+      ...(options.headers || {}),
+    },
+    body: hasRawBody ? options.rawBody : hasJsonBody ? JSON.stringify(body) : undefined,
   });
 
   const text = await response.text();
@@ -142,7 +206,13 @@ async function request(port, method, urlPath, body) {
     }
   }
 
-  return { status: response.status, body: parsed, text };
+  return {
+    status: response.status,
+    body: parsed,
+    text,
+    // fetch вже привів імена заголовків до маленьких літер: headers['content-type']
+    headers: Object.fromEntries(response.headers),
+  };
 }
 
 /** Тип тіла відповіді у тих термінах, якими оперують prediction-таски. */
@@ -153,4 +223,13 @@ function bodyTypeOf(result) {
   return 'other';
 }
 
-module.exports = { startServer, request, bodyTypeOf, PROJECT_ROOT, sleep };
+/** Те саме для заголовка Content-Type: 'json' | 'html' | 'none' | 'other'. */
+function contentTypeOf(result) {
+  const value = result.headers['content-type'];
+  if (!value) return 'none';
+  if (value.includes('application/json')) return 'json';
+  if (value.includes('text/html')) return 'html';
+  return 'other';
+}
+
+module.exports = { startServer, request, bodyTypeOf, contentTypeOf, PROJECT_ROOT, sleep };

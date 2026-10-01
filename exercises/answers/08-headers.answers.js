@@ -30,30 +30,30 @@
 
 module.exports = {
   // Звичайний, правильний запит. Точка відліку.
-  'POST /users · Content-Type: application/json': { status: null, bodyType: null, contentType: null },
+  'POST /users · Content-Type: application/json': { status: 201, bodyType: 'object', contentType: 'json' },
 
   // Той самий запит, але в заголовку дописаний "; charset=utf-8".
   // Питання: сервер сприйме це як JSON чи скаже, що формат не той?
   'POST /users · Content-Type: application/json; charset=utf-8': {
-    status: null,
-    bodyType: null,
-    contentType: null,
+    status: 201,
+    bodyType: 'object',
+    contentType: 'json',
   },
 
   // Тіло — порожній масив [].  Це ВАЛІДНИЙ JSON.
   // Питання: чи достатньо бути валідним JSON, щоб запит прийняли?
-  'POST /users · тіло []': { status: null, bodyType: null, contentType: null },
+  'POST /users · тіло []': { status: 400, bodyType: 'object', contentType: 'json' },
 
   // Content-Type правильний, а тіла немає взагалі (порожній рядок).
-  'POST /users · тіло порожнє': { status: null, bodyType: null, contentType: null },
+  'POST /users · тіло порожнє': { status: 400, bodyType: 'object', contentType: 'json' },
 
   // Клієнт просить HTML: Accept: text/html.
   // Питання: сервер піде йому назустріч чи віддасть своє?
-  'GET /users · Accept: text/html': { status: null, bodyType: null, contentType: null },
+  'GET /users · Accept: text/html': { status: 200, bodyType: 'array', contentType: 'json' },
 
   // Content-Type: application/json у GET-запиті, у якого тіла взагалі немає.
-  'GET /users/2 · Content-Type: application/json': { status: null, bodyType: null, contentType: null },
+  'GET /users/2 · Content-Type: application/json': { status: 200, bodyType: 'object', contentType: 'json' },
 
   // Видалення. Згадай, чим 204 відрізняється від 200.
-  'DELETE /users/2': { status: null, bodyType: null, contentType: null },
+  'DELETE /users/2': { status: 204, bodyType: 'empty', contentType: 'none' },
 };

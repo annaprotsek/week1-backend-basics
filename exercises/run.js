@@ -18,7 +18,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const readline = require('node:readline');
 
-const { startServer, request } = require('./lib/harness');
+const { startServer, request, connectDb, explainDbError } = require('./lib/harness');
 const report = require('./lib/reporter');
 
 /** Спеціальна помилка: таск ще не почато (немає відповідей / немає endpoint'а). */
@@ -44,8 +44,10 @@ function loadTasks() {
 async function runTask(task, options = {}) {
   const quiet = options.quiet === true;
   const checks = [];
-  let target = options.target || 'node';
+  // Таск може сам вимагати свою реалізацію (тиждень 3 працює з todo-api).
+  let target = task.target || options.target || 'node';
   let server = null;
+  let dbClient = null;
 
   const context = {
     port: null,
@@ -68,6 +70,32 @@ async function runTask(task, options = {}) {
       server = await startServer({ target });
       context.port = server.port;
     },
+    /**
+     * Прямий канал до бази — повз застосунок.
+     * Саме тому перевірка може сказати не лише "API відповів правильно",
+     * а й "у таблиці справді з'явився рядок".
+     */
+    db: {
+      async query(sql, params) {
+        if (!dbClient) dbClient = await connectDb();
+        try {
+          return await dbClient.query(sql, params);
+        } catch (error) {
+          if (error.code === '42P01') {
+            throw new Blocked(
+              'У базі немає таблиці todos — спочатку зроби таск 19.\n' +
+                '    Перевір також, що піднятий саме той контейнер: docker compose ps'
+            );
+          }
+          throw new Error(explainDbError(error));
+        }
+      },
+      /** Чиста таблиця і нумерація з 1 — щоб перевірки були передбачуваними. */
+      async reset() {
+        await context.db.query('TRUNCATE todos RESTART IDENTITY');
+      },
+    },
+
     /** Підняти іншу реалізацію того самого API (потрібно таску 16). */
     async useTarget(nextTarget) {
       if (server) await server.stop();
@@ -100,13 +128,15 @@ async function runTask(task, options = {}) {
 
     return { id: task.id, title: task.title, type: task.type, status };
   } catch (error) {
-    if (error instanceof Blocked) {
+    // Немає файлу застосунку — таск просто ще не почато, це не поломка.
+    if (error instanceof Blocked || error.missingEntry) {
       if (!quiet) report.blocked(error.message);
       return { id: task.id, title: task.title, type: task.type, status: 'blocked' };
     }
     if (!quiet) report.crashed(error);
     return { id: task.id, title: task.title, type: task.type, status: 'failed' };
   } finally {
+    if (dbClient) await dbClient.end().catch(() => {});
     if (server) await server.stop();
   }
 }
@@ -225,22 +255,35 @@ async function main() {
     process.exit(1);
   }
 
-  const tasks = loadTasks();
+  const allTasks = loadTasks();
+  const tasks = allTasks;
   const unknown = ids.filter((id) => !tasks.some((t) => t.id === id));
   if (unknown.length > 0) {
     console.error(`Немає таска з номером ${unknown.join(', ')}. Є: ${tasks.map((t) => t.id).join(', ')}`);
     process.exit(1);
   }
 
+  // За замовчуванням показуємо таски поточного тижня: інакше таблиця на 23 рядки
+  // і хвилина очікування на старті. --all-weeks повертає всі.
+  const weekOf = (t) => t.week || 2;
+  const allWeeks = args.includes('--all-weeks');
+  const latestWeek = Math.max(...allTasks.map(weekOf));
+
+  let scope;
+  if (ids.length > 0) scope = allTasks.filter((t) => ids.includes(t.id));
+  else if (allWeeks) scope = allTasks;
+  else scope = allTasks.filter((t) => weekOf(t) === latestWeek);
+
   // Без термінала (наприклад, запуск із скрипта) питати нема кого — просто проганяємо все.
   const interactive = process.stdin.isTTY && !wantAll;
 
   if (interactive) {
-    await guide(tasks, ids[0], target);
+    if (!allWeeks && ids.length === 0) report.weekNote(latestWeek);
+    await guide(scope, ids[0], target);
     process.exit(0);
   }
 
-  const selected = ids.length > 0 ? tasks.filter((t) => ids.includes(t.id)) : tasks;
+  const selected = scope;
   const results = await runAll(selected, target);
   process.exit(results.every((r) => r.status === 'passed') ? 0 : 1);
 }

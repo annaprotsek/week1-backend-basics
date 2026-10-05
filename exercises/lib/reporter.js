@@ -29,14 +29,19 @@ const TYPE_LABEL = { prediction: 'ПЕРЕДБАЧЕННЯ', code: 'КОД', dem
 
 function welcome(total) {
   line();
-  line(c.bold('  Week 1 -> Week 2 · інтерактивні таски'));
+  line(c.bold('  Інтерактивні таски'));
   line();
   line('  Перевірка сама запускає твій сервер, робить до нього запити');
   line('  і показує, що вийшло. Окремо нічого запускати не треба.');
   line();
   line(c.grey(`  Далі буде ${total} тасків. Кожен пояснює, що саме зробити.`));
-  line(c.grey('  Не поспішай: на 06 і 12 закладай найбільше часу.'));
+  line(c.grey('  Не поспішай: у кожного таска написано, скільки він приблизно забере.'));
   line();
+}
+
+function weekNote(week) {
+  line();
+  line(c.grey(`  Показую таски тижня ${week}. Усі разом: node exercises/run.js --all-weeks`));
 }
 
 function scanning() {
@@ -153,7 +158,7 @@ function finale(results) {
   line();
 
   if (rest.length === 0) {
-    line(c.green('  Усе зелене. Комітимо, пушимо — і переходимо до PostgreSQL.'));
+    line(c.green('  Усе зелене. Комітимо і пушимо.'));
   } else {
     line(c.grey(`  Повернутись і продовжити:  node exercises/run.js ${rest[0].id}`));
   }
@@ -169,6 +174,7 @@ module.exports = {
   c,
   line,
   welcome,
+  weekNote,
   scanning,
   progressTable,
   taskIntro,

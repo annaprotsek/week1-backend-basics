@@ -25,7 +25,7 @@ function dedent(text) {
   return rows.map((r) => r.slice(cut));
 }
 
-const TYPE_LABEL = { prediction: 'ПЕРЕДБАЧЕННЯ', code: 'КОД', demo: 'ДЕМО' };
+const TYPE_LABEL = { prediction: 'ПЕРЕДБАЧЕННЯ', code: 'КОД', demo: 'ДЕМО', exam: 'КОНТРОЛЬНА' };
 
 function welcome(total) {
   line();

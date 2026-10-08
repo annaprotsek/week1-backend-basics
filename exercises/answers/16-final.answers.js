@@ -33,7 +33,7 @@ module.exports = {
    *      Користувача з id 'abc' не існує. Та й 'abc' — це взагалі не число.
    *      Що зробить твій код?
    */
-  q1: { status: null, bodyType: null },
+  q1: { status: 404, bodyType: 'object' },
 
   /**
    * q2.  PUT /todos/1
@@ -41,7 +41,7 @@ module.exports = {
    *
    *      Зверни увагу: "false" у лапках — це текст, а не значення false.
    */
-  q2: { status: null, bodyType: null },
+  q2: { status: 400, bodyType: 'object' },
 
   /**
    * q3.  POST /users
@@ -50,7 +50,7 @@ module.exports = {
    *
    *      Це бездоганно валідний JSON. Просто не тієї форми.
    */
-  q3: { status: null, bodyType: null },
+  q3: { status: 400, bodyType: 'object' },
 
   /**
    * q4.  POST /users
@@ -59,7 +59,7 @@ module.exports = {
    *
    *      Сервер узагалі не зможе це розібрати. Що він відповість?
    */
-  q4: { status: null, bodyType: null },
+  q4: { status: 400, bodyType: 'object' },
 
   /**
    * q5.  POST /products
@@ -68,7 +68,7 @@ module.exports = {
    *      Продукт з назвою "Laptop" у цей момент УЖЕ створено.
    *      Тобто ми намагаємось створити другий такий самий.
    */
-  q5: { status: null, bodyType: null },
+  q5: { status: 409, bodyType: 'object' },
 
   /**
    * q6.  PATCH /products/1
@@ -76,14 +76,14 @@ module.exports = {
    *
    *      Продукт існує. Але ціна прийшла текстом "50", а не числом 50.
    */
-  q6: { status: null, bodyType: null },
+  q6: { status: 400, bodyType: 'object' },
 
   /**
    * q7.  GET /products?search=zzzz
    *
    *      Жодного продукту з таким фрагментом у назві немає.
    */
-  q7: { status: null, bodyType: null },
+  q7: { status: 200, bodyType: 'array' },
 
   /**
    * q8.  GET /orders?offset=99
@@ -94,7 +94,7 @@ module.exports = {
    *      Підказка: подумай не лише про статус, а й про ФОРМУ відповіді —
    *      що саме віддає GET /orders.
    */
-  q8: { status: null, bodyType: null },
+  q8: { status: 200, bodyType: 'object' },
 
   // ─────────────────────────────────────────────────────────────────────
   // ЧАСТИНА 2 — чому саме так (4 питання)
@@ -110,7 +110,7 @@ module.exports = {
    *         отримує id, який уже зайнятий кимось іншим
    *      c) ламається тільки тоді, коли користувачів стане дуже багато
    */
-  q9: null,
+  q9: 'b',
 
   /**
    * q10. У POST /orders клієнт надсилає товари й кількості.
@@ -121,7 +121,7 @@ module.exports = {
    *      c) сервер: сам бере ціни зі своїх продуктів і рахує, бо даним
    *         від клієнта не можна довіряти
    */
-  q10: null,
+  q10: 'c',
 
   /**
    * q11. Уяви, що ми запустили ДВА однакові сервери одночасно, на різних
@@ -132,7 +132,7 @@ module.exports = {
    *      b) він теж його побачить — дані ж спільні
    *      c) другий сервер не запуститься, бо дані вже зайняті
    */
-  q11: null,
+  q11: 'a',
 
   /**
    * q12. FastAPI, якщо його не чіпати, на невалідне тіло віддає статус 422
@@ -146,5 +146,5 @@ module.exports = {
    *      b) FastAPI зламаний, 422 — це помилка фреймворку
    *      c) 400 і 422 — це одне й те саме, просто різні назви
    */
-  q12: null,
+  q12: 'a',
 };

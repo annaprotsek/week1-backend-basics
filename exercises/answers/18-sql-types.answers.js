@@ -22,28 +22,28 @@ module.exports = {
   // ─────────────────────────────────────────────────────────────────────
 
   /** q1.  SELECT * FROM todos WHERE completed = true; */
-  q1: null,
+  q1: 'select',
 
   /** q2.  INSERT INTO todos (title) VALUES ('Купити хліб'); */
-  q2: null,
+  q2: 'dml',
 
   /** q3.  CREATE TABLE todos (id SERIAL PRIMARY KEY, title TEXT NOT NULL); */
-  q3: null,
+  q3: 'ddl',
 
   /** q4.  UPDATE todos SET completed = true WHERE id = 1; */
-  q4: null,
+  q4: 'dml',
 
   /** q5.  ALTER TABLE todos ADD COLUMN priority INTEGER; */
-  q5: null,
+  q5: 'ddl',
 
   /** q6.  DELETE FROM todos WHERE id = 1; */
-  q6: null,
+  q6: 'dml',
 
   /** q7.  BEGIN;  ...  COMMIT; */
-  q7: null,
+  q7: 'tcl',
 
   /** q8.  DROP TABLE todos; */
-  q8: null,
+  q8: 'ddl',
 
   // ─────────────────────────────────────────────────────────────────────
   // ЧАСТИНА 2 — а тепер подумати (2 питання)
@@ -59,7 +59,7 @@ module.exports = {
    *         DROP прибирає таблицю разом зі структурою — колонками й усім
    *      c) DELETE вміє видаляти лише один рядок за раз
    */
-  q9: null,
+  q9: 'b',
 
   /**
    * q10. Ти відкрила транзакцію (BEGIN), щось зробила і передумала.
@@ -70,5 +70,5 @@ module.exports = {
    *      c) зміни даних: INSERT, UPDATE, DELETE
    *         (а в PostgreSQL ще й більшість змін структури — CREATE, ALTER)
    */
-  q10: null,
+  q10: 'c',
 };

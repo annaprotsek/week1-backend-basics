@@ -1,0 +1,3 @@
+ALTER TABLE todos ADD COLUMN IF NOT EXISTS priority INTEGER NOT NULL DEFAULT 0;
+
+CREATE INDEX IF NOT EXISTS todos_completed_idx ON todos (completed);

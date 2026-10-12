@@ -4,7 +4,7 @@ from fastapi import FastAPI, HTTPException, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
-from pydantic import BaseModel, StrictStr, StrictBool
+from pydantic import BaseModel, StrictStr, StrictBool, StrictInt, Field
 from psycopg_pool import ConnectionPool
 from psycopg.rows import dict_row
 
@@ -72,6 +72,7 @@ def get_todos(completed: str | None = None, limit: str | None = None, offset: st
 class TodoCreate(BaseModel):
     title: StrictStr
     completed: StrictBool | None = None
+    priority: StrictInt = Field(0, ge=0, le=5)
 
 
 @app.post("/todos", status_code=201)
@@ -84,8 +85,8 @@ def create_todo(body: TodoCreate, response: Response):
     with pool.connection() as conn:
         with conn.cursor(row_factory=dict_row) as cur:
             cur.execute(
-                "INSERT INTO todos (title, completed) VALUES (%s, %s) RETURNING *",
-                [body.title, completed],
+                "INSERT INTO todos (title, completed, priority) VALUES (%s, %s, %s) RETURNING *",
+                [body.title, completed, body.priority],
             )
             todo = cur.fetchone()
 
@@ -96,6 +97,7 @@ def create_todo(body: TodoCreate, response: Response):
 class TodoUpdate(BaseModel):
     title: StrictStr | None = None
     completed: StrictBool | None = None
+    priority: StrictInt | None = Field(None, ge=0, le=5)
 
 
 @app.patch("/todos/{todo_id}")
@@ -110,6 +112,9 @@ def update_todo(todo_id: int, body: TodoUpdate):
     if body.completed is not None:
         sets.append("completed = %s")
         params.append(body.completed)
+    if body.priority is not None:
+        sets.append("priority = %s")
+        params.append(body.priority)
 
     with pool.connection() as conn:
         with conn.cursor(row_factory=dict_row) as cur:

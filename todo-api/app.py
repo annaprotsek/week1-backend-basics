@@ -24,12 +24,49 @@ async def validation_exception_handler(request, exc):
     return JSONResponse(status_code=400, content={"error": "invalid request body"})
 
 @app.get("/todos")
-def get_todos():
+def get_todos(completed: str | None = None, limit: str | None = None, offset: str | None = None):
+    where, params = [], []
+
+    if completed is not None:
+        if completed not in ("true", "false"):
+            raise HTTPException(status_code=400, detail="completed must be true or false")
+        where.append("completed = %s")
+        params.append(completed == "true")
+
+    if limit is None:
+        limit_value = 20
+    else:
+        try:
+            limit_value = int(limit)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="limit must be an integer")
+        if limit_value < 1 or limit_value > 100:
+            raise HTTPException(status_code=400, detail="limit must be between 1 and 100")
+
+    if offset is None:
+        offset_value = 0
+    else:
+        try:
+            offset_value = int(offset)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="offset must be an integer")
+        if offset_value < 0:
+            raise HTTPException(status_code=400, detail="offset must be 0 or greater")
+
+    where_sql = f"WHERE {' AND '.join(where)}" if where else ""
+
     with pool.connection() as conn:
         with conn.cursor(row_factory=dict_row) as cur:
-            cur.execute("SELECT id, title, completed, created_at FROM todos ORDER BY id")
-            rows = cur.fetchall()
-    return rows
+            cur.execute(f"SELECT COUNT(*) AS n FROM todos {where_sql}", params)
+            total = cur.fetchone()["n"]
+
+            cur.execute(
+                f"SELECT * FROM todos {where_sql} ORDER BY id LIMIT %s OFFSET %s",
+                params + [limit_value, offset_value],
+            )
+            items = cur.fetchall()
+
+    return {"items": items, "total": total, "limit": limit_value, "offset": offset_value}
 
 
 class TodoCreate(BaseModel):

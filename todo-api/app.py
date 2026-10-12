@@ -55,6 +55,54 @@ def create_todo(body: TodoCreate, response: Response):
     response.headers["Location"] = f"/todos/{todo['id']}"
     return todo
 
+
+class TodoUpdate(BaseModel):
+    title: StrictStr | None = None
+    completed: StrictBool | None = None
+
+
+@app.patch("/todos/{todo_id}")
+def update_todo(todo_id: int, body: TodoUpdate):
+    if body.title is not None and not body.title:
+        raise HTTPException(status_code=400, detail="title must not be empty")
+
+    sets, params = [], []
+    if body.title is not None:
+        sets.append("title = %s")
+        params.append(body.title)
+    if body.completed is not None:
+        sets.append("completed = %s")
+        params.append(body.completed)
+
+    with pool.connection() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            if sets:
+                params.append(todo_id)
+                cur.execute(
+                    f"UPDATE todos SET {', '.join(sets)} WHERE id = %s RETURNING *",
+                    params,
+                )
+            else:
+                cur.execute("SELECT * FROM todos WHERE id = %s", [todo_id])
+            todo = cur.fetchone()
+
+    if todo is None:
+        raise HTTPException(status_code=404, detail="Todo not found")
+    return todo
+
+
+@app.delete("/todos/{todo_id}", status_code=204)
+def delete_todo(todo_id: int):
+    with pool.connection() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute("DELETE FROM todos WHERE id = %s RETURNING id", [todo_id])
+            row = cur.fetchone()
+
+    if row is None:
+        raise HTTPException(status_code=404, detail="Todo not found")
+    return None
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning")

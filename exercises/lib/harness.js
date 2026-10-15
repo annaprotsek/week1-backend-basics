@@ -20,7 +20,15 @@ const path = require('node:path');
 
 const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
 const PYTHON_DIR = path.join(PROJECT_ROOT, 'python');
+const TODO_DIR = path.join(PROJECT_ROOT, 'todo-api');
 const START_TIMEOUT_MS = 10000;
+
+/**
+ * Адреса бази. Та сама і для перевірки, і для застосунку, який ми піднімаємо,
+ * щоб вони напевно дивились в одне й те саме місце.
+ */
+const DEFAULT_DATABASE_URL = 'postgres://todo:todo@localhost:5432/todo';
+const databaseUrl = () => process.env.DATABASE_URL || DEFAULT_DATABASE_URL;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -60,6 +68,25 @@ function commandFor(target) {
       entry: 'python/app.py',
     };
   }
+  if (target === 'todo') {
+    // Тиждень 3: окремий FastAPI-застосунок, що працює з PostgreSQL.
+    // python/app.py і index.js лишаються недоторканими.
+    const ownVenv = path.join(TODO_DIR, '.venv', 'bin', 'python3');
+    const sharedVenv = path.join(PYTHON_DIR, '.venv', 'bin', 'python3');
+    const interpreter = fs.existsSync(ownVenv)
+      ? ownVenv
+      : fs.existsSync(sharedVenv)
+        ? sharedVenv
+        : process.env.PYTHON || 'python3';
+
+    return {
+      file: interpreter,
+      args: ['app.py'],
+      cwd: TODO_DIR,
+      extraEnv: { PYTHONUNBUFFERED: '1' },
+      entry: 'todo-api/app.py',
+    };
+  }
   return { file: process.execPath, args: ['index.js'], cwd: PROJECT_ROOT, extraEnv: {}, entry: 'index.js' };
 }
 
@@ -76,11 +103,26 @@ function commandFor(target) {
 async function startServer(options = {}) {
   const target = options.target || 'node';
   const command = commandFor(target);
+
+  // Файла застосунку може ще не бути — це не падіння, а "таск ще не почато".
+  const entryPath = path.join(PROJECT_ROOT, command.entry);
+  if (!fs.existsSync(entryPath)) {
+    const hint =
+      command.entry === 'todo-api/app.py'
+        ? 'Файлу todo-api/app.py ще немає — його створюють у таску 20.\n' +
+          '    Як завести оточення і з чого почати — у todo-api/README.md'
+        : command.entry === 'python/app.py'
+          ? 'Файлу python/app.py ще немає — його створюють у таску 15.\n' +
+            '    Деталі — у python/README.md'
+          : `Немає файлу ${command.entry}.`;
+    throw Object.assign(new Error(hint), { missingEntry: true });
+  }
+
   const assignedPort = await findFreePort();
 
   const child = spawn(command.file, command.args, {
     cwd: command.cwd,
-    env: { ...process.env, ...command.extraEnv, PORT: String(assignedPort) },
+    env: { ...process.env, ...command.extraEnv, PORT: String(assignedPort), DATABASE_URL: databaseUrl() },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
 
@@ -128,7 +170,10 @@ async function startServer(options = {}) {
             (target === 'python'
               ? '  Схоже, немає python3 або немає файлу python/app.py.\n' +
                 '  Що робити — написано в python/README.md'
-              : '')
+              : target === 'todo'
+                ? '  Схоже, немає python3 або немає файлу todo-api/app.py.\n' +
+                  '  Що робити — написано в todo-api/README.md'
+                : '')
         );
       }
 
@@ -232,4 +277,66 @@ function contentTypeOf(result) {
   return 'other';
 }
 
-module.exports = { startServer, request, bodyTypeOf, contentTypeOf, PROJECT_ROOT, sleep };
+/**
+ * Пояснює людською мовою, чому не вдалось підключитись до бази.
+ * Для трейні це важливіше за стектрейс драйвера.
+ */
+function explainDbError(error) {
+  const url = databaseUrl();
+
+  if (error.code === 'ECONNREFUSED' || /ECONNREFUSED/.test(error.message)) {
+    return (
+      `Не можу підключитись до бази (${url}).\n` +
+      '  Найімовірніше контейнер не запущений. Підніми його:\n' +
+      '    docker compose up -d\n' +
+      '  І перевір, що він живий:  docker compose ps'
+    );
+  }
+  if (error.code === '3D000') {
+    return (
+      `Підключився до Postgres, але бази "todo" там немає (${url}).\n` +
+      '  Перевір POSTGRES_DB у docker-compose.yml. Якщо міняла його після\n' +
+      '  першого запуску — старий том треба прибрати: docker compose down -v'
+    );
+  }
+  if (error.code === '28P01' || error.code === '28000') {
+    return (
+      `Postgres відповідає, але не пускає: невірний користувач або пароль (${url}).\n` +
+      '  Звір POSTGRES_USER і POSTGRES_PASSWORD у docker-compose.yml.\n' +
+      '  Якщо міняла їх після першого запуску: docker compose down -v && docker compose up -d'
+    );
+  }
+  return `Помилка при роботі з базою (${url}):\n  ${error.message}`;
+}
+
+/** Окреме з'єднання з базою. Закривати обов'язково — інакше процес не завершиться. */
+async function connectDb() {
+  // require саме тут: якщо pg ще не встановлено, повідомлення має бути зрозумілим.
+  let Client;
+  try {
+    ({ Client } = require('pg'));
+  } catch {
+    throw new Error('Не встановлено драйвер pg. Виконай: npm install pg');
+  }
+
+  const client = new Client({ connectionString: databaseUrl(), connectionTimeoutMillis: 5000 });
+  try {
+    await client.connect();
+  } catch (error) {
+    await client.end().catch(() => {});
+    throw new Error(explainDbError(error));
+  }
+  return client;
+}
+
+module.exports = {
+  startServer,
+  request,
+  bodyTypeOf,
+  contentTypeOf,
+  connectDb,
+  explainDbError,
+  databaseUrl,
+  PROJECT_ROOT,
+  sleep,
+};
